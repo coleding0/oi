@@ -30,6 +30,10 @@ public class MarkdownEditor extends BorderPane {
 
         // Left side: note list
         noteTitles = FXCollections.observableArrayList();
+        for (Note note : noteService.getAllNotes()) {
+            noteTitles.add(note.getTitle());
+        }
+
         noteListView = new ListView<>(noteTitles);
         noteListView.setPrefWidth(100);
         noteListView.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> loadNoteByTitle(newVal));
@@ -65,8 +69,19 @@ public class MarkdownEditor extends BorderPane {
 
     private void handleSaveNote() {
         if (currentNote != null) {
-            currentNote.setContent(textArea.getText());
-            saveNoteToFile(currentNote);
+            // Get the current text from the editor
+            String content = textArea.getText();
+
+            // Update the in-memory note object
+            currentNote.setContent(content);
+
+            // Check if the note already exists in the service
+            if (!noteService.findNoteById(currentNote.getId()).isPresent()) {
+                noteService.createNote(currentNote.getTitle(), content);
+            }
+
+            // Update the note in the database
+            noteService.updateNoteContent(currentNote.getId(), content);
         }
     }
 

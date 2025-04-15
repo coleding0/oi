@@ -17,6 +17,13 @@ public class Note {
         this.createdAt = LocalDateTime.now();
         this.lastModified = this.createdAt;
     }
+    public Note(String id, String title, String content, LocalDateTime createdAt, LocalDateTime lastModified) {
+        this.id = id;
+        this.title = title;
+        this.content = content;
+        this.createdAt = createdAt;
+        this.lastModified = lastModified;
+    }
 
     public String getId() {
         return id;
