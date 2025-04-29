@@ -36,6 +36,16 @@
             <artifactId>sqlite-jdbc</artifactId>
             <version>3.43.2.0</version>
         </dependency>
+
+        <!-- https://mvnrepository.com/artifact/org.graalvm.js/js -->
+        <!-- Adds the GraalVM JavaScript engine for embedding a JS runtime inside Java -->
+        <dependency>
+            <groupId>org.graalvm.js</groupId>
+            <artifactId>js</artifactId>
+            <version>21.0.0.2</version>
+        </dependency>
+
+
     </dependencies>
 
 

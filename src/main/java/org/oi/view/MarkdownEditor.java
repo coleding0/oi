@@ -1,21 +1,23 @@
 package org.oi.view;
 
-
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
 import javafx.scene.control.*;
 import javafx.scene.control.Button;
 import javafx.scene.control.TextArea;
+import javafx.scene.input.KeyCode;
 import javafx.scene.layout.*;
 import javafx.stage.FileChooser;
 import org.oi.model.Note;
+import org.oi.scripting.OiPromptDetector;
 import org.oi.service.NoteService;
 
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.util.Optional;
 
 
 public class MarkdownEditor extends BorderPane {
@@ -64,6 +66,21 @@ public class MarkdownEditor extends BorderPane {
         SplitPane splitPane = new SplitPane(noteListView, textArea);
         this.setTop(topBar);
         this.setCenter(splitPane);
+
+        textArea.setOnKeyPressed(event -> {
+            if (event.getCode() == KeyCode.ENTER && !event.isShiftDown()) {
+                OiPromptDetector detector = new OiPromptDetector();
+                Optional<String> result = detector.handleIfTriggered(
+                        textArea.getText(),
+                        textArea.getCaretPosition()
+                );
+
+                result.ifPresent(response -> {
+                    textArea.insertText(textArea.getCaretPosition(), "\n" + response + "\n");
+                });
+            }
+        });
+
     }
     private int untitledCount = 1;
 

@@ -4,14 +4,17 @@ package org.oi;
 import javafx.application.Application;
 import javafx.scene.Scene;
 import javafx.stage.Stage;
-import org.oi.model.Note;
 import org.oi.persistence.DatabaseManager;
-import org.oi.service.NoteService;
+import org.oi.scripting.ScriptService;
 import org.oi.view.MarkdownEditor;
+
 
 public class MainApp extends Application {
     @Override
     public void start(Stage primaryStage) {
+        ScriptService scriptService = new ScriptService();
+        System.out.println(scriptService.runSimpleScript("Cole"));
+
         // init db
         DatabaseManager.initializeDatabase();
 
@@ -25,4 +28,6 @@ public class MainApp extends Application {
     public static void main(String[] args) {
         launch(args);
     }
+
 }
+
