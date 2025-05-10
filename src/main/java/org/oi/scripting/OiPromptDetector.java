@@ -10,10 +10,10 @@ public class OiPromptDetector {
         this.scriptService = new ScriptService();
     }
 
-    public Optional<String> handleIfTriggered(String fullText, int caretPos) {
+    public Optional<ResponseBlock> handleIfTriggered(String fullText, int caretPos) {
         String[] lines = fullText.split("\n");
 
-        // Find current line based on caret position
+        // Determine current line index
         int charCount = 0;
         int currentLineIndex = 0;
         for (int i = 0; i < lines.length; i++) {
@@ -24,11 +24,11 @@ public class OiPromptDetector {
             }
         }
 
-        // Search backwards to find "oi " line and make sure no --- END GPT --- between
+        // Search backward for most recent unhandled "oi " line
         int oiStartIndex = -1;
         for (int i = currentLineIndex; i >= 0; i--) {
-            if (lines[i].trim().equals("--- END GPT ---")) {
-                break; // this block was already handled
+            if (lines[i].trim().startsWith("me:") || lines[i].trim().startsWith("GPT:")) {
+                break; // already handled
             }
             if (lines[i].trim().startsWith("oi ")) {
                 oiStartIndex = i;
@@ -36,22 +36,32 @@ public class OiPromptDetector {
             }
         }
 
-        if (oiStartIndex == -1) {
-            return Optional.empty(); // no new oi block found
-        }
+        if (oiStartIndex == -1) return Optional.empty(); // no valid block
 
-        // Build the full prompt block from oiStartIndex to currentLineIndex
+        // Build the prompt from that line to current line
         StringBuilder promptBuilder = new StringBuilder();
         for (int i = oiStartIndex; i <= currentLineIndex; i++) {
+            String line = lines[i];
             if (i == oiStartIndex) {
-                promptBuilder.append(lines[i].trim().substring(3)); // remove "oi "
+                promptBuilder.append(line.trim().substring(3)); // skip "oi "
             } else {
-                promptBuilder.append("\n").append(lines[i]);
+                promptBuilder.append("\n").append(line);
             }
         }
 
         String prompt = promptBuilder.toString();
         String response = scriptService.runSimpleScript(prompt);
-        return Optional.of(response + "\n--- END GPT ---");
+
+        return Optional.of(new ResponseBlock(oiStartIndex, response));
+    }
+
+    public static class ResponseBlock {
+        public final int lineToReplace;
+        public final String gptResponse;
+
+        public ResponseBlock(int lineToReplace, String gptResponse) {
+            this.lineToReplace = lineToReplace;
+            this.gptResponse = gptResponse;
+        }
     }
 }

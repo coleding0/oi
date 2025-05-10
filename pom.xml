@@ -27,6 +27,12 @@
             <version>21</version>
         </dependency>
         <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-web</artifactId>
+            <version>21</version>
+        </dependency>
+
+        <dependency>
             <groupId>org.xerial</groupId>
             <artifactId>sqlite-jdbc</artifactId>
             <version>3.43.2.0</version>
@@ -36,6 +42,12 @@
             <artifactId>sqlite-jdbc</artifactId>
             <version>3.43.2.0</version>
         </dependency>
+        <dependency>
+            <groupId>com.vladsch.flexmark</groupId>
+            <artifactId>flexmark-all</artifactId>
+            <version>0.64.0</version>
+        </dependency>
+
 
         <!-- https://mvnrepository.com/artifact/org.graalvm.js/js -->
         <!-- Adds the GraalVM JavaScript engine for embedding a JS runtime inside Java -->

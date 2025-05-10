@@ -11,7 +11,9 @@ import javafx.scene.layout.*;
 import javafx.stage.FileChooser;
 import org.oi.model.Note;
 import org.oi.scripting.OiPromptDetector;
+import org.oi.scripting.ScriptService;
 import org.oi.service.NoteService;
+import javafx.scene.web.WebView;
 
 import java.io.File;
 import java.io.FileWriter;
@@ -58,30 +60,82 @@ public class MarkdownEditor extends BorderPane {
         Button loadNoteButton = new Button("Load Note");
         loadNoteButton.setOnAction(e -> handleLoadNote());
 
-        HBox topBar = new HBox(10, newNoteButton, saveNoteButton, renameNoteButton, loadNoteButton);
+        Button reformatButton = new Button("Reformat");
+        reformatButton.setOnAction(e -> handleReformatNote());
+
+        WebView previewPane = new WebView();
+        Button togglePreviewButton = new Button("Toggle Preview");
+
+
+        HBox topBar = new HBox(10, newNoteButton, saveNoteButton, renameNoteButton, loadNoteButton, reformatButton, togglePreviewButton);
         topBar.setPadding(new Insets(10));
         this.setTop(topBar);
+
+
+
+
+        togglePreviewButton.setOnAction(e -> {
+            if (this.getCenter() == textArea) {
+                // Show preview
+                String markdown = textArea.getText();
+                String html = convertMarkdownToHtml(markdown);
+                previewPane.getEngine().loadContent(html);
+                this.setCenter(previewPane);
+            } else {
+                // Show editor
+                this.setCenter(textArea);
+            }
+        });
+
 
         // Layout
         SplitPane splitPane = new SplitPane(noteListView, textArea);
         this.setTop(topBar);
+        splitPane = new SplitPane();
+        splitPane.getItems().addAll(noteListView, textArea);  // left and right
+        splitPane.setDividerPositions(0.3);
         this.setCenter(splitPane);
+
+
+
 
         textArea.setOnKeyPressed(event -> {
             if (event.getCode() == KeyCode.ENTER && !event.isShiftDown()) {
                 OiPromptDetector detector = new OiPromptDetector();
-                Optional<String> result = detector.handleIfTriggered(
+                Optional<OiPromptDetector.ResponseBlock> result = detector.handleIfTriggered(
                         textArea.getText(),
                         textArea.getCaretPosition()
                 );
 
-                result.ifPresent(response -> {
-                    textArea.insertText(textArea.getCaretPosition(), "\n" + response + "\n");
+                result.ifPresent(responseBlock -> {
+                    // Replace 'oi ' with 'me:' at the beginning of the trigger line
+                    int lineStart = getLineStartOffset(textArea, responseBlock.lineToReplace);
+                    String[] lines = textArea.getText().split("\n");
+                    String originalLine = lines[responseBlock.lineToReplace];
+                    String updatedLine = "me: " + originalLine.substring(3); // keep the question
+                    textArea.replaceText(lineStart, lineStart + originalLine.length(), updatedLine);
+
+
+                    // Insert GPT response below
+                    int updatedLineLength = updatedLine.length();
+                    int insertPos = lineStart + updatedLineLength;
+                    textArea.insertText(insertPos, "\nGPT: " + responseBlock.gptResponse + "\n");
+
                 });
             }
         });
 
+
     }
+    private int getLineStartOffset(TextArea textArea, int lineIndex) {
+        String[] lines = textArea.getText().split("\n");
+        int offset = 0;
+        for (int i = 0; i < lineIndex; i++) {
+            offset += lines[i].length() + 1; // +1 for newline
+        }
+        return offset;
+    }
+
     private int untitledCount = 1;
 
     private void handleSaveNote() {
@@ -130,7 +184,29 @@ public class MarkdownEditor extends BorderPane {
             }
         });
     }
+    // refomormat note
+    private void handleReformatNote() {
+        String currentContent = textArea.getText();
+        ScriptService scriptService = new ScriptService();
 
+        String instruction = """
+        Reformat this note into clean, concise markdown.
+        - Preserve all original information and meaning.
+        - Use headings, bullet points, or code blocks if appropriate.
+        - Remove redundant text and clean up spacing.
+    """;
+
+        String combinedPrompt = instruction + "\n\n" + currentContent;
+
+        String reformatted = scriptService.runSimpleScript(combinedPrompt);
+        textArea.setText(reformatted);
+    }
+
+    private String convertMarkdownToHtml(String markdownText) {
+        return com.vladsch.flexmark.html.HtmlRenderer.builder()
+                .build()
+                .render(com.vladsch.flexmark.parser.Parser.builder().build().parse(markdownText));
+    }
 
     private void loadNoteByTitle(String title) {
         noteService.getAllNotes().stream()
