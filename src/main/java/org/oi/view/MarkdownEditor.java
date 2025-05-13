@@ -1,203 +1,177 @@
 package org.oi.view;
 
-import javafx.collections.FXCollections;
-import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
 import javafx.scene.control.*;
-import javafx.scene.control.Button;
-import javafx.scene.control.TextArea;
-import javafx.scene.input.KeyCode;
-import javafx.scene.layout.*;
-import javafx.stage.FileChooser;
+import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.HBox;
+import javafx.scene.web.WebView;
+import javafx.util.Callback;
 import org.oi.model.Note;
 import org.oi.scripting.OiPromptDetector;
-import org.oi.scripting.ScriptService;
 import org.oi.service.NoteService;
-import javafx.scene.web.WebView;
-
-import java.io.File;
-import java.io.FileWriter;
-import java.io.IOException;
-import java.nio.file.Files;
+import org.oi.scripting.ScriptService;
 import java.util.Optional;
 
-
 public class MarkdownEditor extends BorderPane {
-    private final TextArea textArea;
-    private final ListView<String> noteListView;
-    private final ObservableList<String> noteTitles;
+
     private final NoteService noteService;
-    private Note currentNote;
+    private final ListView<Note> noteListView;
+    private final TextArea textArea;
+    private final WebView previewPane;
+    private final SplitPane splitPane;
 
     public MarkdownEditor() {
-        noteService = new NoteService();
+        this.noteService = new NoteService();
+        this.textArea = new TextArea();
+        this.previewPane = new WebView();
+        this.noteListView = new ListView<>();
+        this.splitPane = new SplitPane();
 
-        // Left side: note list
-        noteTitles = FXCollections.observableArrayList();
-        for (Note note : noteService.getAllNotes()) {
-            noteTitles.add(note.getTitle());
-        }
+        textArea.setWrapText(true);
 
-        noteListView = new ListView<>(noteTitles);
-        noteListView.setPrefWidth(100);
-        noteListView.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> loadNoteByTitle(newVal));
+        initializeUI();
+        initializeEventHandlers();
+    }
 
-
-        // Center: markdown editor
-        textArea = new TextArea();
-        textArea.setPromptText("Type your markdown here...");
-
-        // Top: toolbar
+    private void initializeUI() {
+        // Top bar buttons
         Button newNoteButton = new Button("New Note");
-        newNoteButton.setOnAction(e -> handleNewNote());
-
-        Button saveNoteButton = new Button("Save Note");
-        saveNoteButton.setOnAction(e -> handleSaveNote());
-
-        Button renameNoteButton = new Button("Rename Note");
-        renameNoteButton.setOnAction(e -> handleRenameNote());
-
-        Button loadNoteButton = new Button("Load Note");
-        loadNoteButton.setOnAction(e -> handleLoadNote());
-
+        Button saveNoteButton = new Button("Save");
+        Button renameNoteButton = new Button("Rename");
         Button reformatButton = new Button("Reformat");
-        reformatButton.setOnAction(e -> handleReformatNote());
-
-        WebView previewPane = new WebView();
         Button togglePreviewButton = new Button("Toggle Preview");
 
-
-        HBox topBar = new HBox(10, newNoteButton, saveNoteButton, renameNoteButton, loadNoteButton, reformatButton, togglePreviewButton);
+        HBox topBar = new HBox(10, newNoteButton, saveNoteButton, renameNoteButton, reformatButton, togglePreviewButton);
         topBar.setPadding(new Insets(10));
         this.setTop(topBar);
 
-
-
-
-        togglePreviewButton.setOnAction(e -> {
-            if (this.getCenter() == textArea) {
-                // Show preview
-                String markdown = textArea.getText();
-                String html = convertMarkdownToHtml(markdown);
-                previewPane.getEngine().loadContent(html);
-                this.setCenter(previewPane);
-            } else {
-                // Show editor
-                this.setCenter(textArea);
+        // Note list setup
+        noteListView.getItems().addAll(noteService.getAllNotes());
+        noteListView.setCellFactory(new Callback<>() {
+            @Override
+            public ListCell<Note> call(ListView<Note> param) {
+                return new ListCell<>() {
+                    @Override
+                    protected void updateItem(Note note, boolean empty) {
+                        super.updateItem(note, empty);
+                        setText((note == null || empty) ? null : note.getTitle());
+                    }
+                };
             }
         });
 
+        noteListView.getSelectionModel().selectedItemProperty().addListener((obs, oldNote, newNote) -> {
+            if (newNote != null) {
+                textArea.setText(newNote.getContent());
+            }
+        });
 
-        // Layout
-        SplitPane splitPane = new SplitPane(noteListView, textArea);
-        this.setTop(topBar);
-        splitPane = new SplitPane();
-        splitPane.getItems().addAll(noteListView, textArea);  // left and right
+        splitPane.getItems().addAll(noteListView, textArea);
         splitPane.setDividerPositions(0.3);
         this.setCenter(splitPane);
 
+        // Button actions
+        newNoteButton.setOnAction(e -> {
+            Note newNote = noteService.createNote("Untitled", "");
+            noteListView.getItems().add(newNote);
+            noteListView.getSelectionModel().select(newNote);
+        });
 
+        saveNoteButton.setOnAction(e -> {
+            Note selected = noteListView.getSelectionModel().getSelectedItem();
+            if (selected != null) {
+                selected.setContent(textArea.getText());
+                noteService.updateNoteContent(selected.getId(), selected.getContent());
+            }
+        });
 
-
-        textArea.setOnKeyPressed(event -> {
-            if (event.getCode() == KeyCode.ENTER && !event.isShiftDown()) {
-                OiPromptDetector detector = new OiPromptDetector();
-                Optional<OiPromptDetector.ResponseBlock> result = detector.handleIfTriggered(
-                        textArea.getText(),
-                        textArea.getCaretPosition()
-                );
-
-                result.ifPresent(responseBlock -> {
-                    // Replace 'oi ' with 'me:' at the beginning of the trigger line
-                    int lineStart = getLineStartOffset(textArea, responseBlock.lineToReplace);
-                    String[] lines = textArea.getText().split("\n");
-                    String originalLine = lines[responseBlock.lineToReplace];
-                    String updatedLine = "me: " + originalLine.substring(3); // keep the question
-                    textArea.replaceText(lineStart, lineStart + originalLine.length(), updatedLine);
-
-
-                    // Insert GPT response below
-                    int updatedLineLength = updatedLine.length();
-                    int insertPos = lineStart + updatedLineLength;
-                    textArea.insertText(insertPos, "\nGPT: " + responseBlock.gptResponse + "\n");
-
+        renameNoteButton.setOnAction(e -> {
+            Note selected = noteListView.getSelectionModel().getSelectedItem();
+            if (selected != null) {
+                TextInputDialog dialog = new TextInputDialog(selected.getTitle());
+                dialog.setTitle("Rename Note");
+                dialog.setHeaderText(null);
+                dialog.setContentText("New title:");
+                dialog.showAndWait().ifPresent(name -> {
+                    selected.setTitle(name);
+                    noteListView.refresh();
                 });
             }
         });
 
+        reformatButton.setOnAction(e -> handleReformatNote());
 
+
+        togglePreviewButton.setOnAction(e -> {
+            if (splitPane.getItems().get(1) == textArea) {
+                String markdown = textArea.getText();
+                String html = convertMarkdownToHtml(markdown);
+                previewPane.getEngine().loadContent(html);
+                splitPane.getItems().set(1, previewPane);
+            } else {
+                splitPane.getItems().set(1, textArea);
+            }
+        });
     }
-    private int getLineStartOffset(TextArea textArea, int lineIndex) {
+
+    private void initializeEventHandlers() {
+        textArea.setOnKeyPressed(event -> {
+            switch (event.getCode()) {
+                case ENTER -> {
+                    if (!event.isShiftDown()) {
+                        OiPromptDetector detector = new OiPromptDetector();
+                        Optional<OiPromptDetector.ResponseBlock> result = detector.handleIfTriggered(textArea.getText(), textArea.getCaretPosition());
+                        result.ifPresent(responseBlock -> {
+                            String[] lines = textArea.getText().split("\n");
+                            String originalLine = lines[responseBlock.lineToReplace];
+                            String updatedLine = "Me: " + originalLine.substring(3);
+                            int lineStart = getLineStartOffset(responseBlock.lineToReplace);
+                            textArea.replaceText(lineStart, lineStart + originalLine.length(), updatedLine);
+
+                            int insertPos = lineStart + updatedLine.length();
+                            ScriptService scriptService = new ScriptService();
+
+                            String contextInstruction = """
+                                The following is a markdown-formatted note. Use the content as context.
+                                Only respond to the most recent line that begins with 'me:' — treat that as the user's request.
+                                Do not repeat or summarize the context unless it adds clarity.
+                                """;
+
+                            String fullNote = textArea.getText();
+                            String userPrompt = updatedLine.substring(4).trim(); // remove 'me:' prefix
+
+                            String fullPrompt = contextInstruction + "\n\n" + fullNote + "\n\nMe: " + userPrompt;
+
+                            String gptResponse = scriptService.runSimpleScript(fullPrompt);
+                            textArea.insertText(insertPos, "\nGPT: " + gptResponse + "\n");
+
+                        });
+                    }
+                }
+            }
+        });
+    }
+
+    private int getLineStartOffset(int lineIndex) {
         String[] lines = textArea.getText().split("\n");
         int offset = 0;
         for (int i = 0; i < lineIndex; i++) {
-            offset += lines[i].length() + 1; // +1 for newline
+            offset += lines[i].length() + 1;
         }
         return offset;
     }
 
-    private int untitledCount = 1;
-
-    private void handleSaveNote() {
-        if (currentNote != null) {
-            // Get the current text from the editor
-            String content = textArea.getText();
-
-            // Update the in-memory note object
-            currentNote.setContent(content);
-
-            // Check if the note already exists in the service
-            if (!noteService.findNoteById(currentNote.getId()).isPresent()) {
-                noteService.createNote(currentNote.getTitle(), content);
-            }
-
-            // Update the note in the database
-            noteService.updateNoteContent(currentNote.getId(), content);
-        }
-    }
-
-
-    private void handleNewNote() {
-        String title = "Untitled " + untitledCount++;
-        currentNote = noteService.createNote(title, "");
-        noteTitles.add(currentNote.getTitle());
-        textArea.clear();
-    }
-
-    private void handleRenameNote() {
-        if (currentNote == null) return;
-
-        TextInputDialog dialog = new TextInputDialog(currentNote.getTitle());
-        dialog.setTitle("Rename Note");
-        dialog.setHeaderText("Enter a new title:");
-        dialog.setContentText("Title:");
-
-        dialog.showAndWait().ifPresent(newTitle -> {
-            // Update the note title
-            String oldTitle = currentNote.getTitle();
-            currentNote.setTitle(newTitle);
-
-            // Update list view
-            int index = noteTitles.indexOf(oldTitle);
-            if (index != -1) {
-                noteTitles.set(index, newTitle);
-            }
-        });
-    }
-    // refomormat note
     private void handleReformatNote() {
         String currentContent = textArea.getText();
         ScriptService scriptService = new ScriptService();
-
         String instruction = """
-        Reformat this note into clean, concise markdown.
-        - Preserve all original information and meaning.
-        - Use headings, bullet points, or code blocks if appropriate.
-        - Remove redundant text and clean up spacing.
-    """;
-
+            Reformat this note into clean, concise markdown.
+            - Preserve all original information and meaning.
+            - Use headings, bullet points, or code blocks if appropriate.
+            - Remove redundant text and clean up spacing.
+            - Do not include chat-style formatting (like 'Me:' or 'GPT:').
+            """;
         String combinedPrompt = instruction + "\n\n" + currentContent;
-
         String reformatted = scriptService.runSimpleScript(combinedPrompt);
         textArea.setText(reformatted);
     }
@@ -207,62 +181,4 @@ public class MarkdownEditor extends BorderPane {
                 .build()
                 .render(com.vladsch.flexmark.parser.Parser.builder().build().parse(markdownText));
     }
-
-    private void loadNoteByTitle(String title) {
-        noteService.getAllNotes().stream()
-                .filter(note -> note.getTitle().equals(title))
-                .findFirst()
-                .ifPresent(note -> {
-                    currentNote = note;
-                    textArea.setText(note.getContent());
-                });
-    }
-
-    public String getMarkdownText() {
-        return textArea.getText();
-    }
-    // saving to file
-    private void saveNoteToFile(Note note) {
-        try {
-            String userHome = System.getProperty("user.home");
-            File notesDir = new File(userHome, "oi-notes");
-            if (!notesDir.exists()) {
-                notesDir.mkdirs();
-            }
-
-            File file = new File(notesDir, note.getTitle() + ".md");
-            try (FileWriter writer = new FileWriter(file)) {
-                writer.write(note.getContent());
-                System.out.println("Saved to: " + file.getAbsolutePath());
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
-// load a note from file
-
-    private void handleLoadNote() {
-        FileChooser fileChooser = new FileChooser();
-        fileChooser.setTitle("Open Markdown Note");
-        fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Markdown Files", "*.md"));
-
-        File selectedFile = fileChooser.showOpenDialog(this.getScene().getWindow());
-        if (selectedFile != null) {
-            try {
-                String content = Files.readString(selectedFile.toPath());
-                String title = selectedFile.getName().replace(".md", "");
-
-                Note loadedNote = new Note(title, content);
-                noteService.getAllNotes().add(loadedNote);
-                noteTitles.add(loadedNote.getTitle());
-                currentNote = loadedNote;
-                textArea.setText(content);
-
-                System.out.println("Loaded note: " + title);
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
-    }
-
 }
