@@ -1,5 +1,7 @@
 package org.oi.view;
 
+import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
 import javafx.scene.control.*;
 import javafx.scene.layout.BorderPane;
@@ -10,6 +12,8 @@ import org.oi.model.Note;
 import org.oi.scripting.OiPromptDetector;
 import org.oi.service.NoteService;
 import org.oi.scripting.ScriptService;
+
+import java.util.List;
 import java.util.Optional;
 
 public class MarkdownEditor extends BorderPane {
@@ -19,6 +23,8 @@ public class MarkdownEditor extends BorderPane {
     private final TextArea textArea;
     private final WebView previewPane;
     private final SplitPane splitPane;
+    private final ObservableList<Note> allNotes = FXCollections.observableArrayList();
+
 
     public MarkdownEditor() {
         this.noteService = new NoteService();
@@ -40,13 +46,18 @@ public class MarkdownEditor extends BorderPane {
         Button renameNoteButton = new Button("Rename");
         Button reformatButton = new Button("Reformat");
         Button togglePreviewButton = new Button("Toggle Preview");
+        TextField searchField = new TextField();
+        searchField.setPromptText("Search notes...");
+        searchField.textProperty().addListener((obs, oldVal, newVal) -> filterNotes(newVal));
 
-        HBox topBar = new HBox(10, newNoteButton, saveNoteButton, renameNoteButton, reformatButton, togglePreviewButton);
+
+        HBox topBar = new HBox(10, searchField, newNoteButton, saveNoteButton, renameNoteButton, reformatButton, togglePreviewButton);
         topBar.setPadding(new Insets(10));
         this.setTop(topBar);
 
         // Note list setup
-        noteListView.getItems().addAll(noteService.getAllNotes());
+        allNotes.addAll(noteService.getAllNotes());
+        noteListView.setItems(FXCollections.observableArrayList(allNotes));
         noteListView.setCellFactory(new Callback<>() {
             @Override
             public ListCell<Note> call(ListView<Note> param) {
@@ -112,6 +123,19 @@ public class MarkdownEditor extends BorderPane {
                 splitPane.getItems().set(1, textArea);
             }
         });
+    }
+    private void filterNotes(String query) {
+        if (query == null || query.isEmpty()) {
+            noteListView.setItems(FXCollections.observableArrayList(allNotes));
+            return;
+        }
+
+        List<Note> filtered = allNotes.stream()
+                .filter(note -> note.getTitle().toLowerCase().contains(query.toLowerCase()) ||
+                        note.getContent().toLowerCase().contains(query.toLowerCase()))
+                .toList();
+
+        noteListView.setItems(FXCollections.observableArrayList(filtered));
     }
 
     private void initializeEventHandlers() {
